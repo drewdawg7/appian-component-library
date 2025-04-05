@@ -1,0 +1,33 @@
+name: Zip Appian Component
+
+on:
+  workflow_dispatch:
+
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Prepare artifact contents
+        run: |
+          mkdir artifact
+          cp appian-component-plugin.xml artifact/
+
+          for dir in */ ; do
+            case "$dir" in
+              .git/|.github/|.vscode/|artifact/)
+                continue
+                ;;
+              *)
+                cp -r "$dir" artifact/
+                ;;
+            esac
+          done
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: appian-component
+          path: artifact
