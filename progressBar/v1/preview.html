@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Progress Bar Preview</title>
+    <style>
+        /* Optional: Add some basic styling for the body if needed */
+        body { padding: 20px; }
+    </style>
+
+    <!-- Add Import Map -->
+    <script type="importmap">
+    {
+      "imports": {
+        "animejs": "/node_modules/animejs/lib/anime.es.js" 
+      }
+    }
+    </script>
+    <!-- NOTE: Adjust the path '/node_modules/animejs/lib/anime.es.js' 
+         if your node_modules directory is located differently relative 
+         to progressBar/v1/ -->
+
+</head>
+<body>
+
+    <h1>Progress Bar Preview</h1>
+
+    <!-- 1. The container your script targets -->
+    <div id="bar-container"></div>
+
+    <!-- 2. A minimal script to manually trigger your component's logic -->
+    <script>
+        // Define just enough of Appian object for your script not to break
+        window.Appian = {
+            Component: {
+                // Store the callback function your component provides
+                _onNewValueCallback: null,
+                onNewValue: function(callback) {
+                    this._onNewValueCallback = callback;
+                },
+                // Add dummy functions for others if your script calls them
+                setValidations: function() {},
+                saveValue: function() {}
+            }
+        };
+
+        // Function to manually call the component's update logic
+        function renderPreview(values) {
+            if (window.Appian.Component._onNewValueCallback) {
+                 // Ensure the container exists before calling the callback
+                if (document.getElementById("bar-container")) {
+                    window.Appian.Component._onNewValueCallback(values);
+                } else {
+                    console.error("Container 'bar-container' not found.");
+                }
+            } else {
+                 // Fallback if onNewValue hasn't been called/registered yet
+                 // This might happen if index.js loads after this script tries to run
+                 // Using DOMContentLoaded ensures the DOM is ready and index.js likely loaded
+                console.warn("onNewValue callback not registered yet. Retrying after DOM load.");
+                 document.addEventListener('DOMContentLoaded', () => {
+                     if(window.Appian.Component._onNewValueCallback) {
+                         window.Appian.Component._onNewValueCallback(values);
+                     } else {
+                         console.error("Failed to find onNewValue callback even after DOM load.");
+                     }
+                 });
+            }
+        }
+    </script>
+
+    <!-- 3. Include your component's script -->
+    <script type="module" src="./index.js"></script>
+
+    <!-- 4. Call the preview function with sample data *after* index.js has loaded -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const sampleValues = {
+                percentage: 75,
+                barColor: "purple",
+                borderColor: "#cccccc"
+                // Add other properties your component expects, if any
+            };
+            renderPreview(sampleValues);
+        });
+    </script>
+
+</body>
+</html>

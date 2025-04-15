@@ -1,0 +1,26 @@
+{
+  "name": "appian-component-library",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "py python_scripts/build.py",
+    "start-server": "py python_scripts/start_server.py",
+    "stop-server": "py python_scripts/stop_server.py",
+    "start:preview": "npx parcel _preview/preview.html --no-cache"
+  },
+  "targets": {
+    "default": {
+      "publicUrl": "./"
+    }
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "animejs": "^4.0.0"
+  },
+  "devDependencies": {
+    "@parcel/config-default": "^2.14.4",
+    "cpy-cli": "^5.0.0"
+  }
+}

@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Component Preview</title>
+    <style>
+        body { padding: 20px; font-family: sans-serif; display: flex; gap: 20px; }
+        #sidebar { width: 200px; border-right: 1px solid #ccc; padding-right: 20px; }
+        #preview-area { flex-grow: 1; }
+        #component-list { list-style: none; padding: 0; margin: 0; }
+        #component-list li button { display: block; width: 100%; padding: 8px; margin-bottom: 5px; text-align: left; background: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; }
+        #component-list li button:hover { background: #e0e0e0; }
+        #preview-wrapper { border: 1px dashed #ccc; padding: 15px; min-height: 100px; margin-top: 10px; }
+        .error { color: red; font-weight: bold; }
+        .info { margin-bottom: 10px; background-color: #eee; padding: 5px; font-size: 0.9em; }
+        /* Add styles for the parameter form */
+        #parameter-form-area { margin-top: 15px; padding: 10px; border: 1px solid #eee; background-color: #f9f9f9; }
+        #parameter-form-area label { display: block; margin-bottom: 3px; font-weight: bold; }
+        #parameter-form-area input { width: calc(100% - 12px); padding: 5px; margin-bottom: 8px; border: 1px solid #ccc; }
+        #parameter-form-area button { padding: 8px 15px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        #parameter-form-area button:hover { background-color: #0056b3; }
+    </style>
+    <script type="importmap">
+    {
+      "imports": {
+        "animejs": "/node_modules/animejs/lib/anime.esm.js"
+      }
+    }
+    </script>
+</head>
+<body>
+    <a href="/appian-component-plugin.xml" style="display: none;">Plugin XML</a> <!-- Root relative path -->
+
+    <div id="sidebar">
+        <h2>Available Components</h2>
+        <ul id="component-list">
+            <!-- Component links/buttons will be added here -->
+        </ul>
+        <div id="sidebar-info" class="info"></div>
+    </div>
+
+    <div id="preview-area">
+        <h1>Component Preview</h1>
+        <div id="preview-info" class="info">Select a component from the list to preview.</div>
+        <!-- Wrapper where the dynamic container will be placed -->
+        <div id="preview-wrapper">
+            <!-- Component's target container will be added here by script -->
+        </div>
+        <!-- Area for dynamic parameter inputs -->
+        <div id="parameter-form-area">
+             <!-- Parameter form will be generated here -->
+        </div>
+    </div>
+
+    <script>
+        let currentComponentPath = ''; // e.g., progressBar/v1
+        let currentComponentName = ''; // e.g., progressBar
+        let componentCallback = null;
+        let loadedSampleData = {};
+        let targetContainerId = null;
+        let activeComponentScript = null; // Keep track of the loaded script element
+        let componentParameters = {}; // Store parameters keyed by component name
+
+        // --- Mock Appian SDK ---
+        window.Appian = {
+            Component: {
+                // Reset callback on new component load
+                _resetCallback: function() { componentCallback = null; },
+                onNewValue: function(callback) {
+                    console.log(`Preview Mock: onNewValue called by a script (expecting ${currentComponentPath})`);
+                    componentCallback = callback;
+
+                    // Trigger initial render with empty data.
+                    // User will provide data via the form.
+                    triggerComponentRender({});
+                },
+                setValidations: function(v) { console.log(`Preview Mock: setValidations called by ${currentComponentPath}`, v); },
+                saveValue: function(n, v) { console.log(`Preview Mock: saveValue called by ${currentComponentPath}`, { [n]: v }); }
+            }
+        };
+
+        // --- Helper Functions ---
+        function displayInfo(message, isError = false, area = 'preview') {
+             const infoDiv = document.getElementById(`${area}-info`);
+             infoDiv.textContent = message;
+             infoDiv.className = isError ? 'info error' : 'info';
+        }
+
+        function triggerComponentRender(data) {
+             if (componentCallback) {
+                 // We don't necessarily know the targetContainerId anymore,
+                 // the component script should find its own container now.
+                 // Let's just log the attempt.
+                 console.log(`Preview Mock: Attempting to trigger render for ${currentComponentPath} with data:`, data);
+
+                 // We might need to pass the previewWrapper element itself if components need it?
+                 // Or rely on the component finding its hardcoded ID within the injected HTML.
+
+                 try {
+                     componentCallback(data);
+                     // Can't easily confirm the target anymore
+                     displayInfo(`Render triggered for ${currentComponentName}. Data: ${JSON.stringify(data)}`);
+                 } catch (error) {
+                     displayInfo(`Error during component render: ${error.message}`, true);
+                     console.error("Component render error:", error);
+                 }
+             } else {
+                 // This might happen normally if data is fetched before script calls onNewValue
+                 console.warn("Preview Mock: Tried to trigger render, but no callback registered yet.");
+             }
+        }
+
+        // --- Parameter Form Logic ---
+        function displayParameterForm(params) {
+            const formArea = document.getElementById('parameter-form-area');
+            formArea.innerHTML = ''; // Clear previous form
+
+            if (!params || params.length === 0) {
+                formArea.innerHTML = '<p>No parameters defined for this component.</p>';
+                return;
+            }
+
+            const form = document.createElement('form');
+            form.id = 'component-params-form';
+            form.onsubmit = (e) => { // Prevent default form submission
+                e.preventDefault();
+                updatePreviewFromForm();
+                return false;
+            };
+
+            params.forEach(param => {
+                const { name, type, category } = param;
+
+                // Only show input/input-output parameters
+                if (category === 'output-only') return; // Skip output-only params
+
+                const label = document.createElement('label');
+                label.htmlFor = `param-${name}`;
+                // Add type/category info to label for clarity
+                label.textContent = `${name} (${type}, ${category}):`;
+
+                const input = document.createElement('input');
+                input.id = `param-${name}`;
+                input.name = name;
+
+                // Basic type mapping
+                switch (type.toLowerCase()) {
+                    case 'integer':
+                    case 'number': // Handle potential variations
+                        input.type = 'number';
+                        break;
+                    case 'boolean':
+                        input.type = 'checkbox'; // Represent boolean as checkbox
+                        break;
+                    default: // Text, Color, etc.
+                        input.type = 'text';
+                        break;
+                }
+
+                 // Add small description or placeholder if needed (future enhancement)
+                 // input.placeholder = `Enter ${type} value`;
+
+                form.appendChild(label);
+                form.appendChild(input);
+                form.appendChild(document.createElement('br')); // Simple spacing
+            });
+
+            const updateButton = document.createElement('button');
+            updateButton.type = 'submit'; // Use submit type for form
+            updateButton.textContent = 'Update Preview';
+            form.appendChild(updateButton);
+
+            formArea.appendChild(form);
+        }
+
+        function updatePreviewFromForm() {
+            const form = document.getElementById('component-params-form');
+            if (!form) return;
+
+            const formData = new FormData(form);
+            const newData = {};
+
+            // Retrieve current parameters for type checking/casting
+            const currentParams = componentParameters[currentComponentName] || [];
+            const paramMap = new Map(currentParams.map(p => [p.name, p]));
+
+            for (const [name, value] of formData.entries()) {
+                const paramDef = paramMap.get(name);
+                if (!paramDef) continue; // Should not happen if form is correct
+
+                 // Basic type casting based on XML definition
+                 switch (paramDef.type.toLowerCase()) {
+                    case 'integer':
+                    case 'number':
+                        // Handle empty string for numbers - default to null or 0? Appian might send null.
+                        newData[name] = value === '' ? null : parseInt(value, 10);
+                        if (isNaN(newData[name])) newData[name] = null; // Handle parsing errors
+                        break;
+                    case 'boolean':
+                         // Checkbox value is 'on' if checked, absent otherwise
+                         newData[name] = form.querySelector(`#param-${name}`).checked;
+                         break;
+                    default: // Text, etc.
+                        newData[name] = value;
+                        break;
+                }
+            }
+
+            loadedSampleData = newData; // Update global data store
+            console.log("Preview: Updating component with form data:", loadedSampleData);
+            triggerComponentRender(loadedSampleData); // Trigger re-render
+        }
+
+        // --- Component Loading Logic ---
+        async function loadComponent(componentName) {
+            // Reset state for the new component
+            displayInfo(`Loading ${componentName}...`);
+            document.getElementById('preview-wrapper').innerHTML = ''; // Clear previous container
+            if (activeComponentScript) { // Remove previous script
+                 activeComponentScript.remove();
+                 activeComponentScript = null;
+            }
+            window.Appian.Component._resetCallback(); // Clear old callback
+            loadedSampleData = {};
+            targetContainerId = null;
+            currentComponentName = componentName;
+            currentComponentPath = `${componentName}/v1`;
+
+            // ---> Display parameter form for the selected component
+            displayParameterForm(componentParameters[componentName]);
+
+            // 1. Fetch preview data - REMOVED
+            // const dataPath = `/${currentComponentPath}/preview-data.json`; // Root relative path
+            // let rawData = {};
+            // try { ... fetch logic removed ... } catch (error) { ... error logic removed ...}
+
+            // ---> Prepare the preview wrapper (will be filled by component's HTML)
+            const previewWrapper = document.getElementById('preview-wrapper');
+            previewWrapper.innerHTML = ''; // Clear previous content
+            targetContainerId = null; // Reset this, we expect the injected HTML to contain the target
+
+            // 2. Fetch and inject the component's index.html content
+            const htmlPath = `/${currentComponentPath}/index.html`;
+            let htmlInjected = false;
+            try {
+                console.log(`Preview: Fetching component HTML from: ${htmlPath}`);
+                const response = await fetch(htmlPath);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch ${htmlPath}: ${response.status} ${response.statusText}.`);
+                }
+                const htmlText = await response.text();
+
+                // Parse the HTML and extract body content
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(htmlText, 'text/html');
+                const bodyContent = doc.body.innerHTML;
+
+                if (bodyContent) {
+                    previewWrapper.innerHTML = bodyContent;
+                    console.log(`Preview: Injected HTML content from ${htmlPath} into preview-wrapper.`);
+                    htmlInjected = true;
+                } else {
+                    console.warn(`Preview: No content found within <body> tag of ${htmlPath}.`);
+                    displayInfo(`Warning: Component HTML (${htmlPath}) has no body content.`, false);
+                }
+
+            } catch (error) {
+                console.error(`Error fetching/injecting HTML content from ${htmlPath}:`, error);
+                displayInfo(`Error loading component HTML: ${error.message}`, true);
+                // Optionally, stop here if HTML loading fails?
+                // return;
+            }
+
+            // 3. Dynamically load the component script *after* HTML is injected
+            if (htmlInjected) {
+                const scriptPath = `/${currentComponentPath}/index.js`; // Root relative path
+                try {
+                    console.log(`Preview: Loading component script from: ${scriptPath}`);
+                    const script = document.createElement('script');
+                    script.type = 'module';
+                    script.src = `${scriptPath}?t=${Date.now()}`; // Cache bust
+                    script.onerror = () => {
+                        displayInfo(`Error loading component script: ${scriptPath}. Check path and console.`, true);
+                    };
+                    script.onload = () => {
+                        console.log(`Preview: Script loaded: ${scriptPath}`);
+                        // Rendering is now triggered by Appian.Component.onNewValue when the script calls it
+                    };
+                    activeComponentScript = script; // Store reference to remove later
+                    document.body.appendChild(script);
+                } catch (e) {
+                    displayInfo(`Error creating script tag for ${scriptPath}: ${e.message}`, true);
+                }
+            } else {
+                console.warn(`Preview: Skipping script load for ${componentName} because HTML injection failed or was empty.`);
+            }
+        }
+
+
+        // --- Initial Setup ---
+        async function fetchAndDisplayComponents() {
+            const listElement = document.getElementById('component-list');
+            try {
+                displayInfo("Fetching component list...", false, "sidebar");
+                const xmlPath = '/appian-component-plugin.xml'; // Root relative path
+                console.log(`Fetching XML from: ${xmlPath}`);
+                const response = await fetch(xmlPath); // Use simple path
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch ${xmlPath}: ${response.status} ${response.statusText}.`);
+                }
+                const xmlText = await response.text();
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(xmlText, "application/xml"); 
+
+                const errorNode = xmlDoc.querySelector("parsererror");
+                if (errorNode) {
+                    console.error("Parser Error Details:", errorNode);
+                    // Make the error message more specific about XML parsing vs fetching
+                    throw new Error(`Error parsing XML from ${xmlPath}: ${errorNode.textContent}`); 
+                }
+
+                const components = xmlDoc.querySelectorAll("component");
+                if (components.length === 0) {
+                     displayInfo("No components found in XML.", false, "sidebar");
+                     return;
+                }
+
+                components.forEach(comp => {
+                    const ruleName = comp.getAttribute('rule-name');
+                    if (ruleName) {
+                        // Parse parameters for this component
+                        const params = [];
+                        comp.querySelectorAll('parameter').forEach(p => {
+                             params.push({
+                                 name: p.querySelector('name')?.textContent || 'unknown',
+                                 type: p.querySelector('type')?.textContent || 'Text', // Default type
+                                 category: p.querySelector('category')?.textContent || 'input-output' // Default category
+                             });
+                        });
+                        componentParameters[ruleName] = params; // Store parameters
+
+                        const li = document.createElement('li');
+                        const button = document.createElement('button');
+                        button.textContent = ruleName;
+                        button.onclick = () => loadComponent(ruleName);
+                        li.appendChild(button);
+                        listElement.appendChild(li);
+                    }
+                });
+                 displayInfo(`Found ${components.length} components.`, false, "sidebar");
+
+            } catch (error) {
+                console.error("Error fetching/parsing component XML:", error);
+                displayInfo(`Error loading component list: ${error.message}`, true, "sidebar");
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', fetchAndDisplayComponents);
+
+    </script>
+
+</body>
+</html> 
