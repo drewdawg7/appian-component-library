@@ -1,0 +1,17 @@
+##Cursor
+./.cursor
+
+
+##VS Code
+./.vscode
+
+## Parcel
+./.parcel-cache
+./dist
+
+## Node
+./node_modules
+./package-lock.json
+
+## Output
+./output
